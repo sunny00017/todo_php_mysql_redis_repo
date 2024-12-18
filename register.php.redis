@@ -1,0 +1,54 @@
+<?php
+// Include the database connection file
+include('db.php');
+
+// Connect to Redis
+$redis = new Redis();
+$redis->connect('127.0.0.1', 6379);  // You can replace '127.0.0.1' with your Redis server endpoint if it's hosted elsewhere
+
+// Check if the form has been submitted
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // Get form data
+    $name = $_POST['name'];
+    $email = $_POST['email'];
+    $phone = $_POST['phone'];
+    $address = $_POST['address'];
+
+    // Check if the email is already cached in Redis
+    $cachedData = $redis->get("user:$email");
+
+    if ($cachedData) {
+        // If email is found in Redis cache, display message that it's already registered
+        echo "<p style='color: red;'>This email is already registered (from cache). Please try logging in or use a different email.</p>";
+    } else {
+        // If not found in Redis, check if the email exists in the MySQL database
+        $sql = "SELECT * FROM users WHERE email = '$email'";
+        $result = $conn->query($sql);
+
+        if ($result->num_rows > 0) {
+            // If email exists in the database, show an error message
+            echo "<p style='color: red;'>This email is already registered in the database. Please try logging in or use a different email.</p>";
+        } else {
+            // If email doesn't exist, insert new data into the database
+            $sql = "INSERT INTO users (name, email, phone, address) VALUES ('$name', '$email', '$phone', '$address')";
+
+            if ($conn->query($sql) === TRUE) {
+                // If insertion is successful, cache the email in Redis to prevent future duplicate registrations
+                $redis->set("user:$email", 'registered');  // Cache the email with the value 'registered'
+
+                // Optionally, set an expiration for the cache (1 hour example)
+                // $redis->setex("user:$email", 3600, 'registered');  // 3600 seconds = 1 hour
+
+                // Display success message and redirect to another page (optional)
+                echo "<p style='color: green;'>New record created successfully. Welcome, $name!</p>";
+                header("Location: display.php");  // Redirect to display page (optional)
+                exit();
+            } else {
+                // If there’s an error during insertion, display it
+                echo "<p style='color: red;'>Error: " . $conn->error . "</p>";
+            }
+        }
+    }
+}
+?>
+
